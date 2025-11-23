@@ -21,7 +21,7 @@ vibe Trading is an open-source project that lets you build quantitative trading 
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/yourusername/VibeTrading.git
+git clone https://github.com/Jamailar/VibeTrading.git
 cd VibeTrading
 ```
 
