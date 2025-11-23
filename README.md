@@ -2,9 +2,222 @@
 
 ![VibeTrading Logo](images/image01.jpg)
 
-An open-source way to create quant trading strategies through conversation.
+create your trading strategies just by chatting
+
+vibe Trading 是一个开源项目，让人们通过与 AI 聊天的方式创建量化交易策略、并立即完成回测，支持美股、港股与比特币等市场。它不是给专业量化团队的黑箱，而是面向好奇者、学习者与独立开发者的开放实验室。值得一提的是，该项目源于 Miyoo AI Club 的一次活动，成员之间自发组织的一次开源实验，在“能不能把交易策略做成对话式体验”的讨论中自然诞生，并持续由社区共同完善。
 
 vibe Trading is an open-source project that lets you build quantitative trading strategies simply by chatting with AI—then instantly backtest them across U.S. stocks, Hong Kong equities, and Bitcoin. It's not a closed, institutional quant system, but a playground for curious builders, traders, and learners. The project originated from an activity inside the Miyoo AI Club, where members spontaneously launched a collaborative open-source experiment to explore whether trading strategy creation could become conversational—and it has grown with the community ever since.
+
+# 部署方法 (Deployment)
+
+## 前置要求
+
+- Docker 20.10+ 和 Docker Compose 2.0+
+- 至少 4GB 可用内存
+- 至少 10GB 可用磁盘空间
+
+## 快速开始
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/yourusername/VibeTrading.git
+cd VibeTrading
+```
+
+### 2. 配置环境变量
+
+复制环境变量模板文件并编辑：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 文件，配置必要的 API 密钥：
+
+- `OPENAI_API_KEY` - OpenAI API 密钥（用于策略生成）
+- `POLYGON_API_KEY` - Polygon.io API 密钥（可选，用于美股数据）
+- `JWT_SECRET` - JWT 密钥（生产环境请修改为强密码）
+- 其他可选配置项
+
+### 3. 启动所有服务
+
+使用 Docker Compose 启动所有服务：
+
+```bash
+docker-compose up -d
+```
+
+或者使用 Makefile：
+
+```bash
+make up
+```
+
+### 4. 查看服务状态
+
+```bash
+docker-compose ps
+# 或
+make ps
+```
+
+### 5. 查看日志
+
+```bash
+docker-compose logs -f
+# 或
+make logs
+```
+
+查看特定服务的日志：
+
+```bash
+docker-compose logs -f api-gateway
+docker-compose logs -f frontend
+```
+
+## 服务访问地址
+
+启动成功后，可以通过以下地址访问各个服务：
+
+- **前端界面**: http://localhost:3000
+- **API 网关**: http://localhost:8000
+- **API 文档**: http://localhost:8000/docs
+- **策略 AI 工作器**: http://localhost:8001
+- **回测引擎**: http://localhost:8002
+- **市场数据服务**: http://localhost:8003
+- **市场研究服务**: http://localhost:8004
+- **PostgreSQL**: localhost:5432
+- **Redis**: localhost:6379
+
+## 常用命令
+
+### 使用 Makefile（推荐）
+
+```bash
+make help          # 显示所有可用命令
+make build         # 构建所有 Docker 镜像
+make up            # 启动所有服务
+make down          # 停止所有服务
+make restart       # 重启所有服务
+make logs          # 查看所有服务日志
+make ps            # 查看运行中的服务
+make clean         # 停止服务并删除 volumes（警告：会删除数据库数据）
+make shell-db      # 进入数据库容器 shell
+make shell-api     # 进入 API Gateway 容器 shell
+make shell-frontend # 进入 Frontend 容器 shell
+```
+
+### 使用 Docker Compose
+
+```bash
+docker-compose up -d              # 启动所有服务
+docker-compose down               # 停止所有服务
+docker-compose restart            # 重启所有服务
+docker-compose logs -f            # 查看日志
+docker-compose ps                 # 查看服务状态
+docker-compose build              # 重新构建镜像
+docker-compose down -v            # 停止并删除 volumes
+```
+
+## 开发模式
+
+### 前端开发
+
+如果需要在前端进行开发，可以在本地运行 Next.js 开发服务器：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+确保 `.env` 中配置了 `NEXT_PUBLIC_API_URL=http://localhost:8000`
+
+### 后端服务开发
+
+各个 Python 服务支持热重载，修改代码后重启对应容器即可：
+
+```bash
+docker-compose restart api-gateway
+```
+
+或者进入容器进行调试：
+
+```bash
+docker-compose exec api-gateway /bin/bash
+```
+
+## 数据库管理
+
+### 访问数据库
+
+```bash
+make shell-db
+# 或
+docker-compose exec database psql -U vibetrading -d vibetrading
+```
+
+### 数据库迁移
+
+数据库初始化脚本会在首次启动时自动执行（位于 `database/init/01_init.sql`）。
+
+如需添加新的迁移脚本，请将其添加到 `database/migrations/` 目录。
+
+## 故障排查
+
+### 服务无法启动
+
+1. 检查端口是否被占用：
+   ```bash
+   lsof -i :3000
+   lsof -i :8000
+   ```
+
+2. 查看服务日志：
+   ```bash
+   docker-compose logs [service-name]
+   ```
+
+3. 检查环境变量配置是否正确
+
+### 数据库连接失败
+
+1. 确保数据库容器已启动：
+   ```bash
+   docker-compose ps database
+   ```
+
+2. 检查数据库健康状态：
+   ```bash
+   docker-compose exec database pg_isready -U vibetrading
+   ```
+
+### 重新初始化数据库
+
+⚠️ **警告**: 这将删除所有数据
+
+```bash
+docker-compose down -v
+docker-compose up -d database
+# 等待数据库启动后，再启动其他服务
+docker-compose up -d
+```
+
+## 生产环境部署
+
+生产环境部署时，请注意：
+
+1. **修改默认密码和密钥**：确保 `.env` 中所有敏感信息都已修改
+2. **配置 HTTPS**：使用 Traefik 或 Nginx 作为反向代理
+3. **数据备份**：定期备份 PostgreSQL 数据卷
+4. **监控和日志**：配置日志收集和监控系统
+5. **资源限制**：为容器设置适当的资源限制
+
+更多部署详情请参考 [docker/README.md](docker/README.md)
+
+---
 
 #  vibe Trading — Core Functional Specifications (Detailed Module Documentation)
 
