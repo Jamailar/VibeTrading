@@ -16,6 +16,7 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
   const [activePage, setActivePage] = useState('strategies');
   const [strategyView, setStrategyView] = useState<StrategyView>('list');
   const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null);
+  const [generatedStrategyData, setGeneratedStrategyData] = useState<any>(null);
 
   const handleNewStrategy = () => {
     setStrategyView('new');
@@ -47,6 +48,8 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
             <StrategyEditor
               strategyId={editingStrategyId || undefined}
               onBack={handleBackToList}
+              generatedStrategyData={generatedStrategyData}
+              onStrategyDataConsumed={() => setGeneratedStrategyData(null)}
             />
           );
         }
@@ -145,7 +148,11 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
             <p className="text-xs text-text-muted mt-1">与 AI 对话创建交易策略</p>
           </div>
           <div className="flex-1 overflow-hidden">
-            <ChatInterface />
+            <ChatInterface 
+              onStrategyGenerated={(strategyData) => {
+                setGeneratedStrategyData(strategyData);
+              }}
+            />
           </div>
         </div>
       )}

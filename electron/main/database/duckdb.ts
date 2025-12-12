@@ -1,4 +1,4 @@
-import { Database } from 'duckdb';
+ import { Database } from 'duckdb';
 import path from 'path';
 import { app } from 'electron';
 import fs from 'fs';
@@ -12,43 +12,122 @@ export async function initializeDatabase() {
   const dbPath = path.join(userDataPath, 'vibetrading.duckdb');
 
   console.log('[Database] 初始化 DuckDB 数据库:', dbPath);
+  console.log('[Database] 检查 Database 类:', typeof Database, Database);
 
   // 确保目录存在
   const dbDir = path.dirname(dbPath);
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
+    console.log('[Database] 创建数据库目录:', dbDir);
   }
 
   return new Promise<void>((resolve, reject) => {
-    // 创建数据库连接
-    db = new (Database as any)(dbPath, (err: Error | null) => {
-      if (err) {
-        console.error('[Database] 数据库连接失败:', err);
-        reject(err);
-        return;
-      }
+    let timeoutId: NodeJS.Timeout | null = null;
+    let isResolved = false;
 
-      // 创建连接
-      // @ts-ignore - DuckDB connect method signature
-      (db as any).connect((err: Error | null, conn: any) => {
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    const safeResolve = () => {
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        resolve();
+      }
+    };
+
+    const safeReject = (error: Error) => {
+      if (!isResolved) {
+        isResolved = true;
+        cleanup();
+        reject(error);
+      }
+    };
+
+    // 添加超时机制（10秒）
+    timeoutId = setTimeout(() => {
+      console.error('[Database] 数据库初始化超时（10秒）- 回调函数未被调用');
+      console.error('[Database] 这可能是 DuckDB 原生模块在 Electron 中的兼容性问题');
+      console.error('[Database] 尝试使用内存数据库作为后备方案...');
+      
+      // 尝试使用内存数据库
+      try {
+        db = new (Database as any)(':memory:', (err: Error | null) => {
+          if (err) {
+            console.error('[Database] 内存数据库也失败:', err);
+            safeReject(new Error('数据库初始化超时且内存数据库也失败'));
+            return;
+          }
+
+          console.log('[Database] 使用内存数据库成功');
+          (db as any).connect((err: Error | null, conn: any) => {
+            if (err) {
+              safeReject(err);
+              return;
+            }
+            connection = conn;
+            createTables(conn)
+              .then(() => {
+                console.log('[Database] 内存数据库初始化完成');
+                safeResolve();
+              })
+              .catch(safeReject);
+          });
+        });
+      } catch (error: any) {
+        safeReject(new Error('数据库初始化超时且无法使用后备方案'));
+      }
+    }, 10000);
+
+    console.log('[Database] 开始创建 Database 实例...');
+    console.log('[Database] 数据库路径:', dbPath);
+    
+    try {
+      // 创建数据库连接
+      console.log('[Database] 调用 new Database()...');
+      db = new (Database as any)(dbPath, (err: Error | null) => {
+        console.log('[Database] Database 构造函数回调被调用, err:', err);
+        
         if (err) {
-          console.error('[Database] 创建连接失败:', err);
-          reject(err);
+          console.error('[Database] 数据库连接失败:', err);
+          console.error('[Database] 错误详情:', err.message);
+          console.error('[Database] 错误堆栈:', err.stack);
+          safeReject(err);
           return;
         }
 
-        connection = conn;
-        console.log('[Database] 数据库连接成功');
+        console.log('[Database] Database 实例创建成功');
+        console.log('[Database] 尝试直接使用 Database 对象（不调用 connect()）...');
 
-        // 创建表
-        createTables(conn)
+        // 根据 DuckDB 文档，可以直接在 Database 对象上执行 SQL，无需 connect()
+        // 将 Database 对象本身作为 connection 使用
+        connection = db;
+        console.log('[Database] 使用 Database 对象作为连接对象');
+
+        // 直接使用 Database 对象创建表
+        createTables(db as any)
           .then(() => {
-            console.log('[Database] 数据库初始化完成');
-            resolve();
+            console.log('[Database] 数据库初始化完成（使用文件数据库）');
+            safeResolve();
           })
-          .catch(reject);
+          .catch((error) => {
+            console.error('[Database] 创建表失败:', error);
+            console.error('[Database] 错误详情:', error?.message);
+            safeReject(error);
+          });
       });
-    });
+      
+      console.log('[Database] new Database() 调用完成，等待回调...');
+    } catch (error: any) {
+      console.error('[Database] 创建 Database 实例时抛出同步异常:', error);
+      console.error('[Database] 错误详情:', error?.message);
+      console.error('[Database] 错误堆栈:', error?.stack);
+      safeReject(error);
+    }
   });
 }
 

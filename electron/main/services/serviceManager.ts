@@ -53,62 +53,88 @@ export async function initializeServices() {
 }
 
 function registerIPCHandlers() {
-  if (!services) return;
+  if (!services) {
+    console.error('[ServiceManager] 服务未初始化，无法注册 IPC handlers');
+    return;
+  }
+
+  console.log('[ServiceManager] 开始注册 IPC handlers...');
 
   // 认证相关
   ipcMain.handle('auth:login', async (event, username: string, password: string) => {
     return await services!.auth.login(username, password);
   });
+  console.log('[ServiceManager] 已注册: auth:login');
 
   ipcMain.handle('auth:logout', async () => {
     return await services!.auth.logout();
   });
+  console.log('[ServiceManager] 已注册: auth:logout');
 
   ipcMain.handle('auth:getCurrentUser', async (event, token?: string) => {
     return await services!.auth.getCurrentUser(token);
   });
+  console.log('[ServiceManager] 已注册: auth:getCurrentUser');
 
   // 策略相关
   ipcMain.handle('strategy:generate', async (event, message: string) => {
     return await services!.strategy.generate(message);
   });
+  console.log('[ServiceManager] 已注册: strategy:generate');
 
   ipcMain.handle('strategy:save', async (event, strategy: any) => {
-    return await services!.strategy.save(strategy);
+    console.log('[ServiceManager] 收到 strategy:save 请求');
+    try {
+      const result = await services!.strategy.save(strategy);
+      console.log('[ServiceManager] strategy:save 成功');
+      return result;
+    } catch (error: any) {
+      console.error('[ServiceManager] strategy:save 失败:', error);
+      throw error;
+    }
   });
+  console.log('[ServiceManager] 已注册: strategy:save');
 
   ipcMain.handle('strategy:list', async () => {
     return await services!.strategy.list();
   });
+  console.log('[ServiceManager] 已注册: strategy:list');
 
   ipcMain.handle('strategy:get', async (event, id: string) => {
     return await services!.strategy.get(id);
   });
+  console.log('[ServiceManager] 已注册: strategy:get');
 
   ipcMain.handle('strategy:update', async (event, id: string, updates: any) => {
     return await services!.strategy.update(id, updates);
   });
+  console.log('[ServiceManager] 已注册: strategy:update');
 
   ipcMain.handle('strategy:delete', async (event, id: string) => {
     return await services!.strategy.delete(id);
   });
+  console.log('[ServiceManager] 已注册: strategy:delete');
 
   ipcMain.handle('strategy:getStrategiesDir', async () => {
     return services!.strategy.getStrategiesDir();
   });
+  console.log('[ServiceManager] 已注册: strategy:getStrategiesDir');
 
   // 回测相关
   ipcMain.handle('backtest:run', async (event, params: any) => {
     return await services!.backtest.run(params);
   });
+  console.log('[ServiceManager] 已注册: backtest:run');
 
   ipcMain.handle('backtest:get', async (event, id: string) => {
     return await services!.backtest.get(parseInt(id, 10));
   });
+  console.log('[ServiceManager] 已注册: backtest:get');
 
   ipcMain.handle('backtest:list', async () => {
     return await services!.backtest.list();
   });
+  console.log('[ServiceManager] 已注册: backtest:list');
 
   // 市场数据相关
   ipcMain.handle('market:getData', async (
@@ -120,10 +146,14 @@ function registerIPCHandlers() {
   ) => {
     return await services!.marketData.getData(symbol, timeframe, startDate, endDate);
   });
+  console.log('[ServiceManager] 已注册: market:getData');
 
   ipcMain.handle('market:getInsight', async () => {
     return await services!.marketResearch.getInsight();
   });
+  console.log('[ServiceManager] 已注册: market:getInsight');
+
+  console.log('[ServiceManager] 所有 IPC handlers 注册完成');
 }
 
 export function getServices() {

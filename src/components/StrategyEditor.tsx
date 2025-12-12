@@ -4,9 +4,11 @@ import ChatInterface from './ChatInterface';
 interface StrategyEditorProps {
   strategyId?: string; // 改为字符串（文件名）
   onBack: () => void;
+  generatedStrategyData?: any; // AI 生成的策略数据
+  onStrategyDataConsumed?: () => void; // 数据被消费后的回调
 }
 
-export default function StrategyEditor({ strategyId, onBack }: StrategyEditorProps) {
+export default function StrategyEditor({ strategyId, onBack, generatedStrategyData, onStrategyDataConsumed }: StrategyEditorProps) {
   const [strategy, setStrategy] = useState<any>(null);
   const [loading, setLoading] = useState(!!strategyId);
   const [saving, setSaving] = useState(false);
@@ -39,6 +41,17 @@ export default function StrategyEditor({ strategyId, onBack }: StrategyEditorPro
     }
     loadStrategiesDir();
   }, [strategyId]);
+
+  // 监听 AI 生成的策略数据
+  useEffect(() => {
+    if (generatedStrategyData) {
+      handleStrategyGenerated(generatedStrategyData);
+      // 通知父组件数据已被消费
+      if (onStrategyDataConsumed) {
+        onStrategyDataConsumed();
+      }
+    }
+  }, [generatedStrategyData]);
 
   async function loadStrategiesDir() {
     try {
@@ -78,6 +91,28 @@ export default function StrategyEditor({ strategyId, onBack }: StrategyEditorPro
       JSON.parse(value);
     } catch (e: any) {
       setJsonError(e.message);
+    }
+  }
+
+  // 处理 AI 生成的策略数据
+  function handleStrategyGenerated(strategyData: any) {
+    if (!strategyData) return;
+
+    try {
+      // 更新策略状态
+      setStrategy(strategyData);
+      
+      // 更新 JSON 内容
+      const updatedJson = JSON.stringify(strategyData, null, 2);
+      setJsonContent(updatedJson);
+      
+      // 清除 JSON 错误
+      setJsonError(null);
+      
+      console.log('[StrategyEditor] 策略数据已从 AI 生成并填充到编辑器');
+    } catch (error: any) {
+      console.error('[StrategyEditor] 处理生成的策略数据失败:', error);
+      alert(`填充策略数据失败: ${error.message}`);
     }
   }
 

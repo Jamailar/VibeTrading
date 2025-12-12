@@ -4,9 +4,14 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  strategyData?: any; // 策略生成结果
 }
 
-export default function ChatInterface() {
+interface ChatInterfaceProps {
+  onStrategyGenerated?: (strategyData: any) => void; // 策略生成后的回调
+}
+
+export default function ChatInterface({ onStrategyGenerated }: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,13 +37,42 @@ export default function ChatInterface() {
 
       const response = await window.electronAPI.strategy.generate(input);
 
+      // 构建策略数据对象
+      const strategyData = {
+        name: response.data?.strategy?.name || `策略_${new Date().toISOString().slice(0, 10)}`,
+        description: response.data?.strategy?.description || '',
+        strategy: response.data?.strategy || {},
+        code: response.data?.code || '',
+        explanation: response.data?.explanation || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // 构建完整的回复内容
+      let content = '';
+      if (response.data?.explanation) {
+        content = response.data.explanation;
+      } else {
+        content = '策略生成成功！';
+      }
+
+      if (response.data?.code) {
+        content += '\n\n策略代码已生成，已自动填充到编辑器中。';
+      }
+
       const assistantMessage: Message = {
         role: 'assistant',
-        content: response.data?.explanation || '策略生成成功',
+        content: content,
         timestamp: new Date(),
+        strategyData: strategyData, // 保存策略数据
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // 如果有回调函数，调用它来更新编辑器
+      if (onStrategyGenerated && strategyData) {
+        onStrategyGenerated(strategyData);
+      }
     } catch (error: any) {
       const errorMessage: Message = {
         role: 'assistant',
@@ -58,6 +92,7 @@ export default function ChatInterface() {
           <div className="text-center text-text-muted mt-8">
             <p className="text-text-secondary">开始对话，描述您的交易策略想法</p>
             <p className="text-sm mt-2 text-text-muted">例如："当BTC价格突破20日均线时买入，跌破10日均线时卖出"</p>
+            <p className="text-xs mt-3 text-text-muted">AI 将使用 LangChain 生成策略代码并自动填充到左侧编辑器</p>
           </div>
         )}
         {messages.map((msg, idx) => (

@@ -117,8 +117,19 @@ app.whenReady().then(async () => {
     if (initializeServices) {
       await initializeServices();
       console.log('[Main] 服务初始化完成');
+      
+      // 验证关键 handlers 是否已注册
+      try {
+        // 尝试获取已注册的 handlers 列表（通过检查内部状态）
+        console.log('[Main] 验证 IPC handlers 注册状态...');
+        // 注意：这里只是日志记录，实际的 handler 注册在 serviceManager 中完成
+        console.log('[Main] IPC handlers 应该已经通过 serviceManager 注册');
+      } catch (error) {
+        console.error('[Main] 验证 handlers 时出错:', error);
+      }
     } else {
-      console.warn('[Main] initializeServices 未定义，跳过服务初始化');
+      console.error('[Main] 错误: initializeServices 未定义，无法初始化服务');
+      throw new Error('initializeServices 未定义');
     }
     
     // 服务初始化完成后再创建窗口
