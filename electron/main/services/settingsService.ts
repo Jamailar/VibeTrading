@@ -3,6 +3,7 @@ import { getServices } from './serviceManager';
 import { createLLM } from '../../../services/ai-worker/services/llm';
 import { query, run } from '../database/duckdb';
 import path from 'path';
+import axios from 'axios';
 
 interface AIConfig {
   provider: 'openai' | 'anthropic' | 'google';
@@ -277,35 +278,62 @@ export function registerSettingsHandlers() {
         delete process.env[`${config.provider.toUpperCase()}_API_BASE`];
       }
       
-      // 根据提供商返回模型列表
       let models: string[] = [];
       
-      switch (config.provider) {
-        case 'openai':
-          models = [
-            'gpt-4o',
-            'gpt-4o-mini',
-            'gpt-4-turbo',
-            'gpt-4',
-            'gpt-3.5-turbo',
-          ];
-          break;
-        case 'anthropic':
-          models = [
-            'claude-3-5-sonnet-20241022',
-            'claude-3-5-sonnet-20240620',
-            'claude-3-opus-20240229',
-            'claude-3-sonnet-20240229',
-            'claude-3-haiku-20240307',
-          ];
-          break;
-        case 'google':
-          models = [
-            'gemini-1.5-pro',
-            'gemini-1.5-flash',
-            'gemini-pro',
-          ];
-          break;
+      // 尝试从 API 获取模型列表（支持 OpenAI 兼容的 API）
+      try {
+        // 构建 API base URL
+        let apiBase = config.baseURL || '';
+        
+        // 根据提供商设置默认 base URL
+        if (!apiBase) {
+          switch (config.provider) {
+            case 'openai':
+              apiBase = 'https://api.openai.com/v1';
+              break;
+            case 'anthropic':
+              apiBase = 'https://api.anthropic.com/v1';
+              break;
+            case 'google':
+              apiBase = 'https://generativelanguage.googleapis.com/v1';
+              break;
+          }
+        }
+        
+        // 确保 baseURL 格式正确（对于 OpenAI 兼容的 API，需要 /v1 路径）
+        let baseUrl = apiBase;
+        if (config.provider === 'openai' || !config.baseURL) {
+          // 对于 OpenAI 或未指定 baseURL 的情况，确保有 /v1 路径
+          if (!baseUrl.endsWith('/v1') && !baseUrl.endsWith('/v1/')) {
+            baseUrl = baseUrl.replace(/\/$/, '') + '/v1';
+          }
+        }
+        
+        // 尝试从 OpenAI 兼容的 /v1/models 端点获取模型列表
+        // 这适用于所有使用 OpenAI 兼容协议的 API 提供商
+        const response = await axios.get(`${baseUrl}/models`, {
+          headers: {
+            'Authorization': `Bearer ${config.apiKey}`,
+          },
+          timeout: 10000, // 10秒超时
+        });
+        
+        if (response.data && response.data.data) {
+          const data = response.data as { data?: Array<{ id: string }> };
+          // 获取所有模型 ID，不进行过滤，让用户看到所有可用模型
+          const allModels = data.data
+            ?.map((model) => model.id)
+            ?.sort() || [];
+          
+          if (allModels.length > 0) {
+            models = allModels;
+            console.log('[Settings] 从 API 获取到', models.length, '个模型');
+          }
+        }
+      } catch (apiError: any) {
+        // API 可能不支持 /v1/models 端点，这是正常的
+        console.log('[Settings] 从 API 获取模型列表失败（API 可能不支持此端点）:', apiError.message || apiError);
+        // 返回空数组，让用户手动输入模型名
       }
       
       // 恢复原始环境变量
