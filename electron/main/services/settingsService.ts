@@ -55,7 +55,7 @@ export async function initializeSettingsService() {
 
     // 从数据库加载策略文件夹路径
     const strategiesDirSettings = await query('SELECT value FROM settings WHERE key = ?', ['strategies_dir']);
-    if (strategiesDirSettings.length > 0) {
+    if (strategiesDirSettings.length > 0 && strategiesDirSettings[0].value) {
       currentStrategiesDir = strategiesDirSettings[0].value as string;
       console.log('[Settings] 从数据库加载策略文件夹路径:', currentStrategiesDir);
     } else {
@@ -63,6 +63,16 @@ export async function initializeSettingsService() {
       const documentsPath = app.getPath('documents');
       currentStrategiesDir = path.join(documentsPath, 'VibeTrading', 'strategies');
       console.log('[Settings] 使用默认策略文件夹路径:', currentStrategiesDir);
+      // 将默认路径保存到数据库，这样用户可以看到默认值
+      try {
+        await run(
+          'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          ['strategies_dir', currentStrategiesDir]
+        );
+        console.log('[Settings] 默认策略文件夹路径已保存到数据库');
+      } catch (error) {
+        console.warn('[Settings] 保存默认策略文件夹路径失败（不影响使用）:', error);
+      }
     }
   } catch (error) {
     console.error('[Settings] 初始化设置失败:', error);
@@ -86,9 +96,12 @@ export function getStrategiesDir(): string {
   if (currentStrategiesDir) {
     return currentStrategiesDir;
   }
-  // 如果没有设置，使用默认路径
+  // 如果没有设置，使用默认路径（用户文档目录下的 VibeTrading/strategies）
   const documentsPath = app.getPath('documents');
-  return path.join(documentsPath, 'VibeTrading', 'strategies');
+  const defaultPath = path.join(documentsPath, 'VibeTrading', 'strategies');
+  // 确保默认路径被设置到 currentStrategiesDir，这样下次调用时可以直接返回
+  currentStrategiesDir = defaultPath;
+  return defaultPath;
 }
 
 export function registerSettingsHandlers() {

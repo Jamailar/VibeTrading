@@ -46,8 +46,13 @@ export default function Settings() {
     try {
       if (window.electronAPI) {
         const dir = await window.electronAPI.settings?.getStrategiesDir();
-        // 确保始终有值，即使获取失败也显示默认路径提示
-        setStrategiesDir(dir || '正在加载...');
+        // 确保始终有值，显示实际路径或默认路径
+        if (dir) {
+          setStrategiesDir(dir);
+        } else {
+          // 如果获取失败，显示默认路径提示（会在后端返回默认路径）
+          setStrategiesDir('正在加载...');
+        }
       }
     } catch (error) {
       console.error('加载策略文件夹路径失败:', error);
