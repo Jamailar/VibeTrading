@@ -52,12 +52,12 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[600px] flex flex-col">
+    <div className="h-full flex flex-col">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
-          <div className="text-center text-gray-500 mt-8">
-            <p>开始对话，描述您的交易策略想法</p>
-            <p className="text-sm mt-2">例如："当BTC价格突破20日均线时买入，跌破10日均线时卖出"</p>
+          <div className="text-center text-text-muted mt-8">
+            <p className="text-text-secondary">开始对话，描述您的交易策略想法</p>
+            <p className="text-sm mt-2 text-text-muted">例如："当BTC价格突破20日均线时买入，跌破10日均线时卖出"</p>
           </div>
         )}
         {messages.map((msg, idx) => (
@@ -68,12 +68,12 @@ export default function ChatInterface() {
             <div
               className={`max-w-[80%] rounded-lg px-4 py-2 ${
                 msg.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-900'
+                  ? 'bg-accent-primary text-app-bg'
+                  : 'bg-workspace-bg text-text-primary border border-border-default'
               }`}
             >
               <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-              <p className="text-xs mt-1 opacity-70">
+              <p className="text-xs mt-1 text-text-muted">
                 {msg.timestamp.toLocaleTimeString()}
               </p>
             </div>
@@ -81,27 +81,27 @@ export default function ChatInterface() {
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 rounded-lg px-4 py-2">
-              <p className="text-sm text-gray-600">AI正在思考...</p>
+            <div className="bg-workspace-bg rounded-lg px-4 py-2 border border-border-default">
+              <p className="text-sm text-text-secondary">AI正在思考...</p>
             </div>
           </div>
         )}
       </div>
       
-      <form onSubmit={handleSubmit} className="border-t border-gray-200 p-4">
+      <form onSubmit={handleSubmit} className="border-t border-border-default p-4">
         <div className="flex space-x-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="输入您的策略想法..."
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-4 py-2 bg-workspace-bg border border-accent-secondary rounded-md text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-primary focus:border-accent-primary"
             disabled={loading}
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-accent-primary text-app-bg rounded-md hover:bg-trade-focus focus:outline-none focus:ring-2 focus:ring-accent-primary disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-text-disabled disabled:text-text-muted"
           >
             发送
           </button>

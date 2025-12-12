@@ -5,12 +5,13 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   base: './',
+  root: './src', // 设置根目录为 src
   server: {
     port: 5173,
     strictPort: true,
   },
   build: {
-    outDir: 'dist',
+    outDir: '../dist',
     emptyOutDir: true,
   },
   resolve: {

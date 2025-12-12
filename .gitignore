@@ -182,3 +182,9 @@ Pipfile.lock
 
 # poetry
 poetry.lock
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+dist-electron/
+
