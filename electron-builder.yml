@@ -1,0 +1,47 @@
+appId: com.vibetrading.app
+productName: VibeTrading
+copyright: Copyright © 2024 VibeTrading Team
+
+directories:
+  buildResources: build
+  output: release
+
+files:
+  - dist-electron/**/*
+  - dist/**/*
+  - package.json
+  - "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+  - "!.editorconfig"
+  - "!**/._*"
+  - "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}"
+  - "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}"
+  - "!**/{appveyor.yml,.travis.yml,circle.yml}"
+  - "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+
+mac:
+  category: public.app-category.finance
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: assets/icons/icon.icns
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icons/icon.ico
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Finance
+  icon: assets/icons/icon.png
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

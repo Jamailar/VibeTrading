@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "lib": ["ES2020"],
+    "outDir": "../dist-electron",
+    "rootDir": "../",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "sourceMap": true,
+    "allowImportingTsExtensions": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["./**/*.ts", "../services/**/*.ts"],
+  "exclude": ["node_modules", "../node_modules", "../dist-electron", "../src", "../dist"]
+}
