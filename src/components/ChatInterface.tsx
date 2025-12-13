@@ -27,6 +27,7 @@ export default function ChatInterface({ onStrategyGenerated }: ChatInterfaceProp
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setLoading(true);
 
@@ -35,7 +36,13 @@ export default function ChatInterface({ onStrategyGenerated }: ChatInterfaceProp
         throw new Error('Electron API 不可用');
       }
 
-      const response = await window.electronAPI.strategy.generate(input);
+      // 构建对话历史（排除最后一条用户消息，因为已经添加到 messages 了）
+      const conversationHistory = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      const response = await window.electronAPI.strategy.generate(currentInput, conversationHistory);
 
       // 构建策略数据对象
       const strategyData = {

@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import ChatInterface from './ChatInterface';
 
 interface StrategyEditorProps {
   strategyId?: string; // 改为字符串（文件名）

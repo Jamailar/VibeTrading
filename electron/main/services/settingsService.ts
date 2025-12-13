@@ -67,7 +67,8 @@ export async function initializeSettingsService() {
       // 将默认路径保存到数据库，这样用户可以看到默认值
       try {
         await run(
-          'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          `INSERT INTO settings (key, value) VALUES (?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
           ['strategies_dir', currentStrategiesDir]
         );
         console.log('[Settings] 默认策略文件夹路径已保存到数据库');
@@ -135,7 +136,8 @@ export function registerSettingsHandlers() {
       
       // 保存到数据库
       await run(
-        'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
         ['strategies_dir', dirPath]
       );
       
@@ -170,7 +172,8 @@ export function registerSettingsHandlers() {
         const selectedPath = result.filePaths[0];
         // 自动保存选中的路径
         await run(
-          'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+          `INSERT INTO settings (key, value) VALUES (?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
           ['strategies_dir', selectedPath]
         );
         currentStrategiesDir = selectedPath;
@@ -196,6 +199,14 @@ export function registerSettingsHandlers() {
   // 保存设置
   ipcMain.handle('settings:save', async (event, config: AIConfig) => {
     try {
+      // 检查数据库表是否存在
+      try {
+        await query('SELECT 1 FROM settings LIMIT 1');
+      } catch (error) {
+        console.error('[Settings] settings 表不存在或无法访问:', error);
+        throw new Error('数据库表未初始化，请重启应用');
+      }
+
       currentSettings = config;
       
       // 更新环境变量（用于当前会话）
@@ -212,11 +223,24 @@ export function registerSettingsHandlers() {
       // 保存到数据库
       const configJson = JSON.stringify(config);
       await run(
-        'INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
+        `INSERT INTO settings (key, value) VALUES (?, ?)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
         ['ai_config', configJson]
       );
       
       console.log('[Settings] 设置已保存到数据库:', { ...config, apiKey: '***' });
+      
+      // 重新初始化 StrategyService 的 AI Worker（如果存在）
+      try {
+        const { getServices } = require('./serviceManager');
+        const services = getServices();
+        if (services && services.strategy) {
+          services.strategy.initializeAIWorker();
+          console.log('[Settings] StrategyService AI Worker 已重新初始化');
+        }
+      } catch (reinitError) {
+        console.warn('[Settings] 重新初始化 StrategyService AI Worker 失败（不影响设置保存）:', reinitError);
+      }
       
       return { success: true };
     } catch (error: any) {

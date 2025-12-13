@@ -13,7 +13,7 @@ const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
 
 export class StrategyService {
-  private strategyGenerator: StrategyGenerator;
+  private strategyGenerator: StrategyGenerator | null = null;
   private strategiesDir: string;
 
   constructor() {
@@ -33,15 +33,7 @@ export class StrategyService {
       }
       
       // 初始化 AI Worker（可能失败，但不应该阻止服务初始化）
-      try {
-        const llm = createLLM();
-        this.strategyGenerator = new StrategyGenerator(llm);
-        console.log('[StrategyService] AI Worker 初始化成功');
-      } catch (llmError) {
-        console.warn('[StrategyService] AI Worker 初始化失败（策略生成功能将不可用）:', llmError);
-        // 不抛出错误，允许服务继续初始化
-        this.strategyGenerator = null as any;
-      }
+      this.initializeAIWorker();
       
       console.log('[StrategyService] 初始化完成');
     } catch (error) {
@@ -51,13 +43,33 @@ export class StrategyService {
     }
   }
 
-  async generate(message: string) {
+  // 初始化 AI Worker（可以重新调用以重新初始化）
+  initializeAIWorker() {
     try {
+      const llm = createLLM();
+      this.strategyGenerator = new StrategyGenerator(llm);
+      console.log('[StrategyService] AI Worker 初始化成功');
+    } catch (llmError: any) {
+      console.warn('[StrategyService] AI Worker 初始化失败（策略生成功能将不可用）:', llmError?.message || llmError);
+      this.strategyGenerator = null;
+    }
+  }
+
+  async generate(message: string, conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
+    try {
+      // 如果 AI Worker 未初始化，尝试重新初始化
       if (!this.strategyGenerator) {
-        throw new Error('AI Worker 未初始化，无法生成策略');
+        console.log('[StrategyService] AI Worker 未初始化，尝试重新初始化...');
+        this.initializeAIWorker();
+        
+        // 如果仍然未初始化，返回错误
+        if (!this.strategyGenerator) {
+          throw new Error('AI Worker 未初始化。请先在设置页面配置 AI API Key 和模型。');
+        }
       }
-      console.log('[StrategyService] 生成策略:', message);
-      const result = await this.strategyGenerator.generate(message);
+      
+      console.log('[StrategyService] 生成策略:', message, conversationHistory.length > 0 ? `(有 ${conversationHistory.length} 条对话历史)` : '');
+      const result = await this.strategyGenerator.generate(message, conversationHistory);
       return {
         success: true,
         data: result,

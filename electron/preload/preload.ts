@@ -20,8 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 策略相关
   strategy: {
-    generate: (message: string) =>
-      ipcRenderer.invoke('strategy:generate', message),
+    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+      ipcRenderer.invoke('strategy:generate', message, conversationHistory),
     save: (strategy: any) =>
       ipcRenderer.invoke('strategy:save', strategy),
     list: () => ipcRenderer.invoke('strategy:list'),
@@ -68,7 +68,7 @@ export type ElectronAPI = {
     getCurrentUser: (token?: string) => Promise<any>;
   };
   strategy: {
-    generate: (message: string) => Promise<any>;
+    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<any>;
     save: (strategy: any) => Promise<any>;
     list: () => Promise<any[]>;
     get: (id: string) => Promise<any>;

@@ -71,8 +71,15 @@ export async function initializeDatabase() {
             }
             connection = conn;
             createTables(conn)
-              .then(() => {
-                console.log('[Database] 内存数据库初始化完成');
+              .then(async () => {
+                console.log('[Database] 表创建完成，验证表结构...');
+                const verification = await verifyTables();
+                if (!verification.allExist) {
+                  console.error('[Database] 部分表缺失:', verification.missing);
+                  safeReject(new Error(`数据库表创建失败，缺失: ${verification.missing.join(', ')}`));
+                  return;
+                }
+                console.log('[Database] 内存数据库初始化完成，所有表验证通过');
                 safeResolve();
               })
               .catch(safeReject);
@@ -110,8 +117,27 @@ export async function initializeDatabase() {
 
         // 直接使用 Database 对象创建表
         createTables(db as any)
-          .then(() => {
-            console.log('[Database] 数据库初始化完成（使用文件数据库）');
+          .then(async () => {
+            console.log('[Database] 表创建完成，验证表结构...');
+            // 验证表是否真正创建成功
+            const verification = await verifyTables();
+            if (!verification.allExist) {
+              console.error('[Database] 部分表缺失:', verification.missing);
+              console.error('[Database] 尝试重新创建缺失的表...');
+              // 如果表缺失，尝试重新创建
+              try {
+                await createTables(db as any);
+                const reVerification = await verifyTables();
+                if (!reVerification.allExist) {
+                  safeReject(new Error(`数据库表创建失败，缺失: ${reVerification.missing.join(', ')}`));
+                  return;
+                }
+              } catch (retryError) {
+                safeReject(new Error(`重新创建表失败: ${retryError instanceof Error ? retryError.message : String(retryError)}`));
+                return;
+              }
+            }
+            console.log('[Database] 数据库初始化完成（使用文件数据库），所有表验证通过');
             safeResolve();
           })
           .catch((error) => {
@@ -134,66 +160,117 @@ export async function initializeDatabase() {
 function createTables(conn: any): Promise<void> {
   return new Promise((resolve, reject) => {
     const statements = [
-      `CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS strategies (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        strategy_json TEXT NOT NULL,
-        strategy_code TEXT,
-        explanation TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS backtest_runs (
-        id INTEGER PRIMARY KEY,
-        strategy_id INTEGER,
-        status TEXT NOT NULL DEFAULT 'pending',
-        parameters TEXT,
-        results TEXT,
-        started_at TIMESTAMP,
-        completed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS conversations (
-        id INTEGER PRIMARY KEY,
-        title TEXT,
-        messages TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
+      {
+        name: 'users',
+        sql: `CREATE TABLE IF NOT EXISTS users (
+          id INTEGER PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          password_hash TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+      },
+      {
+        name: 'strategies',
+        sql: `CREATE TABLE IF NOT EXISTS strategies (
+          id INTEGER PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          strategy_json TEXT NOT NULL,
+          strategy_code TEXT,
+          explanation TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+      },
+      {
+        name: 'backtest_runs',
+        sql: `CREATE TABLE IF NOT EXISTS backtest_runs (
+          id INTEGER PRIMARY KEY,
+          strategy_id INTEGER,
+          status TEXT NOT NULL DEFAULT 'pending',
+          parameters TEXT,
+          results TEXT,
+          started_at TIMESTAMP,
+          completed_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+      },
+      {
+        name: 'conversations',
+        sql: `CREATE TABLE IF NOT EXISTS conversations (
+          id INTEGER PRIMARY KEY,
+          title TEXT,
+          messages TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+      },
+      {
+        name: 'settings',
+        sql: `CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`,
+      },
     ];
 
     let completed = 0;
     const total = statements.length;
+    const errors: Array<{ table: string; error: Error }> = [];
 
-    statements.forEach((sql) => {
+    statements.forEach(({ name, sql }) => {
       conn.run(sql, (err: Error | null) => {
         if (err) {
           // 忽略 "already exists" 错误
           if (!err.message.includes('already exists') && !err.message.includes('duplicate')) {
-            console.error('[Database] 创建表失败:', err, sql);
-            reject(err);
-            return;
+            console.error(`[Database] 创建表 ${name} 失败:`, err);
+            errors.push({ table: name, error: err });
+          } else {
+            console.log(`[Database] 表 ${name} 已存在`);
           }
+        } else {
+          console.log(`[Database] 表 ${name} 创建成功`);
         }
         completed++;
         if (completed === total) {
-          resolve();
+          if (errors.length > 0) {
+            reject(new Error(`创建表失败: ${errors.map(e => e.table).join(', ')}`));
+          } else {
+            resolve();
+          }
         }
       });
     });
   });
+}
+
+// 验证表是否存在
+export async function verifyTables(): Promise<{ allExist: boolean; missing: string[] }> {
+  const requiredTables = ['users', 'strategies', 'backtest_runs', 'conversations', 'settings'];
+  const missing: string[] = [];
+
+  for (const tableName of requiredTables) {
+    try {
+      await query(`SELECT 1 FROM ${tableName} LIMIT 1`);
+      console.log(`[Database] 表 ${tableName} 存在`);
+    } catch (error: any) {
+      // 如果查询失败，可能是表不存在
+      if (error.message.includes('does not exist') || error.message.includes('not found')) {
+        console.warn(`[Database] 表 ${tableName} 不存在`);
+        missing.push(tableName);
+      } else {
+        // 其他错误（如权限问题）也记录
+        console.warn(`[Database] 验证表 ${tableName} 时出错:`, error.message);
+        missing.push(tableName);
+      }
+    }
+  }
+
+  return {
+    allExist: missing.length === 0,
+    missing,
+  };
 }
 
 export function getDatabase(): any {
@@ -230,32 +307,57 @@ export function closeDatabase() {
 }
 
 // 辅助函数：执行查询
-export function query(sql: string, params: any[] = []): Promise<any[]> {
+export function query(sql: string, params?: any[]): Promise<any[]> {
   return new Promise((resolve, reject) => {
     const conn = getDatabase();
-    conn.all(sql, params, (err: Error | null, rows: any[]) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(rows);
-      }
-    });
+    // 如果没有提供参数，直接执行 SQL，不传递空数组
+    if (!params || params.length === 0) {
+      conn.all(sql, (err: Error | null, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    } else {
+      conn.all(sql, params, (err: Error | null, rows: any[]) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    }
   });
 }
 
 // 辅助函数：执行更新
-export function run(sql: string, params: any[] = []): Promise<{ lastInsertRowid: number; changes: number }> {
+export function run(sql: string, params?: any[]): Promise<{ lastInsertRowid: number; changes: number }> {
   return new Promise((resolve, reject) => {
     const conn = getDatabase();
-    conn.run(sql, params, function(err: Error | null) {
-      if (err) {
-        reject(err);
-      } else {
-        resolve({
-          lastInsertRowid: this.lastID || 0,
-          changes: this.changes || 0,
-        });
-      }
-    });
+    // 如果没有提供参数，直接执行 SQL，不传递空数组
+    if (!params || params.length === 0) {
+      conn.run(sql, function(err: Error | null) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({
+            lastInsertRowid: this.lastID || 0,
+            changes: this.changes || 0,
+          });
+        }
+      });
+    } else {
+      conn.run(sql, params, function(err: Error | null) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({
+            lastInsertRowid: this.lastID || 0,
+            changes: this.changes || 0,
+          });
+        }
+      });
+    }
   });
 }

@@ -1,11 +1,15 @@
 import { StateGraph, Annotation, START, END } from '@langchain/langgraph';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 import { Strategy, StrategyGenerationResult } from '../types/strategy';
 import { validateStrategyCode } from './codeValidator';
 
 const StrategyStateAnnotation = Annotation.Root({
   userMessage: Annotation<string>(),
+  conversationHistory: Annotation<BaseMessage[]>({
+    reducer: (x: BaseMessage[], y: BaseMessage[]) => [...(x || []), ...(y || [])],
+    default: () => [],
+  }),
   intent: Annotation<string>(),
   extractedInfo: Annotation<any>(),
   strategy: Annotation<Strategy>(),
@@ -34,19 +38,31 @@ export class StrategyGenerator {
       .addNode('strategyExtraction', this.strategyExtraction.bind(this))
       .addNode('codeGeneration', this.codeGeneration.bind(this))
       .addNode('validation', this.validation.bind(this))
-      .addNode('explanation', this.explanation.bind(this))
+      .addNode('generateExplanation', this.explanation.bind(this))
       .addEdge(START, 'intentRecognition')
       .addEdge('intentRecognition', 'strategyExtraction')
       .addEdge('strategyExtraction', 'codeGeneration')
       .addEdge('codeGeneration', 'validation')
-      .addEdge('validation', 'explanation')
-      .addEdge('explanation', END);
+      .addEdge('validation', 'generateExplanation')
+      .addEdge('generateExplanation', END);
 
     return graph.compile();
   }
 
   private async intentRecognition(state: StrategyState): Promise<Partial<StrategyState>> {
-    const prompt = `分析以下用户消息，识别交易策略意图。可能的意图类型包括：
+    // 如果有对话历史，构建完整的对话上下文
+    const conversationContext = state.conversationHistory && state.conversationHistory.length > 0
+      ? `对话历史:\n${state.conversationHistory.map((msg, idx) => {
+          if (msg instanceof HumanMessage) {
+            return `用户: ${msg.content}`;
+          } else if (msg instanceof AIMessage) {
+            return `助手: ${msg.content}`;
+          }
+          return '';
+        }).join('\n')}\n\n`
+      : '';
+
+    const prompt = `分析以下用户消息${state.conversationHistory && state.conversationHistory.length > 0 ? '和对话历史' : ''}，识别交易策略意图。可能的意图类型包括：
 - momentum: 动量策略
 - mean_reversion: 均值回归策略
 - breakout: 突破策略
@@ -54,22 +70,42 @@ export class StrategyGenerator {
 - pairs: 配对交易策略
 - trend_following: 趋势跟踪策略
 
-用户消息: ${state.userMessage}
+${conversationContext}当前用户消息: ${state.userMessage}
 
 请只返回意图类型（单个词），不要其他内容。`;
 
-    const response = await this.llm.invoke([
+    const messages: BaseMessage[] = [
       new SystemMessage('你是一个专业的量化交易策略分析师。'),
-      new HumanMessage(prompt),
-    ]);
+    ];
+    
+    // 如果有对话历史，添加到消息列表
+    if (state.conversationHistory && state.conversationHistory.length > 0) {
+      messages.push(...state.conversationHistory);
+    }
+    
+    messages.push(new HumanMessage(prompt));
+
+    const response = await this.llm.invoke(messages);
 
     return { intent: response.content.toString().trim().toLowerCase() };
   }
 
   private async strategyExtraction(state: StrategyState): Promise<Partial<StrategyState>> {
-    const prompt = `基于用户消息和识别的意图，提取策略的关键信息。
+    // 构建对话上下文
+    const conversationContext = state.conversationHistory && state.conversationHistory.length > 0
+      ? `对话历史:\n${state.conversationHistory.map((msg, idx) => {
+          if (msg instanceof HumanMessage) {
+            return `用户: ${msg.content}`;
+          } else if (msg instanceof AIMessage) {
+            return `助手: ${msg.content}`;
+          }
+          return '';
+        }).join('\n')}\n\n`
+      : '';
 
-用户消息: ${state.userMessage}
+    const prompt = `基于用户消息${state.conversationHistory && state.conversationHistory.length > 0 ? '、对话历史' : ''}和识别的意图，提取策略的关键信息。
+
+${conversationContext}当前用户消息: ${state.userMessage}
 意图: ${state.intent}
 
 请提取以下信息（以JSON格式返回）：
@@ -84,10 +120,18 @@ export class StrategyGenerator {
   "positionSize": 仓位大小（可选）
 }`;
 
-    const response = await this.llm.invoke([
+    const messages: BaseMessage[] = [
       new SystemMessage('你是一个专业的量化交易策略分析师，擅长从自然语言中提取结构化策略信息。'),
-      new HumanMessage(prompt),
-    ]);
+    ];
+    
+    // 如果有对话历史，添加到消息列表
+    if (state.conversationHistory && state.conversationHistory.length > 0) {
+      messages.push(...state.conversationHistory);
+    }
+    
+    messages.push(new HumanMessage(prompt));
+
+    const response = await this.llm.invoke(messages);
 
     try {
       const content = response.content.toString();
@@ -169,9 +213,19 @@ ${JSON.stringify(state.strategy, null, 2)}
     return { explanation: response.content.toString().trim() };
   }
 
-  async generate(userMessage: string): Promise<StrategyGenerationResult> {
+  async generate(userMessage: string, conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []): Promise<StrategyGenerationResult> {
+    // 将对话历史转换为 LangChain 消息格式
+    const historyMessages: BaseMessage[] = conversationHistory.map((msg) => {
+      if (msg.role === 'user') {
+        return new HumanMessage(msg.content);
+      } else {
+        return new AIMessage(msg.content);
+      }
+    });
+
     const initialState = {
       userMessage,
+      conversationHistory: historyMessages,
       errors: [],
     };
 

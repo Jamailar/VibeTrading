@@ -77,8 +77,8 @@ function registerIPCHandlers() {
   console.log('[ServiceManager] 已注册: auth:getCurrentUser');
 
   // 策略相关
-  ipcMain.handle('strategy:generate', async (event, message: string) => {
-    return await services!.strategy.generate(message);
+  ipcMain.handle('strategy:generate', async (event, message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) => {
+    return await services!.strategy.generate(message, conversationHistory || []);
   });
   console.log('[ServiceManager] 已注册: strategy:generate');
 
