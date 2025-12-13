@@ -1,19 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { FileEditSuggestion } from '../types/fileEdit';
+import EditSuggestionsPanel from './EditSuggestionsPanel';
 
 interface StrategyEditorProps {
   strategyId?: string; // 改为字符串（文件名）
   onBack: () => void;
   generatedStrategyData?: any; // AI 生成的策略数据
   onStrategyDataConsumed?: () => void; // 数据被消费后的回调
+  editSuggestion?: FileEditSuggestion | null; // 从外部接收的编辑建议
 }
 
-export default function StrategyEditor({ strategyId, onBack, generatedStrategyData, onStrategyDataConsumed }: StrategyEditorProps) {
+export interface StrategyEditorRef {
+  getCurrentContent: () => string;
+}
+
+const StrategyEditor = forwardRef<StrategyEditorRef, StrategyEditorProps>(({ 
+  strategyId, 
+  onBack, 
+  generatedStrategyData, 
+  onStrategyDataConsumed,
+  editSuggestion
+}, ref) => {
   const [strategy, setStrategy] = useState<any>(null);
   const [loading, setLoading] = useState(!!strategyId);
   const [saving, setSaving] = useState(false);
   const [jsonContent, setJsonContent] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [strategiesDir, setStrategiesDir] = useState<string>('');
+  const [pendingEdits, setPendingEdits] = useState<FileEditSuggestion[]>([]);
 
   useEffect(() => {
     if (strategyId) {
@@ -51,6 +65,54 @@ export default function StrategyEditor({ strategyId, onBack, generatedStrategyDa
       }
     }
   }, [generatedStrategyData]);
+
+  // 暴露获取当前内容的方法
+  useImperativeHandle(ref, () => ({
+    getCurrentContent: () => jsonContent,
+  }));
+
+  // 处理从外部接收的编辑建议
+  useEffect(() => {
+    if (editSuggestion) {
+      setPendingEdits(prev => {
+        // 检查是否已存在相同 ID 的建议
+        if (prev.some(edit => edit.id === editSuggestion.id)) {
+          return prev;
+        }
+        return [editSuggestion, ...prev];
+      });
+    }
+  }, [editSuggestion]);
+
+  // 接受编辑建议
+  const handleAcceptEdit = (suggestion: FileEditSuggestion) => {
+    try {
+      // 验证新内容的 JSON 格式
+      JSON.parse(suggestion.newContent);
+      
+      // 应用编辑建议到编辑器
+      setJsonContent(suggestion.newContent);
+      setJsonError(null);
+      
+      // 更新策略状态
+      try {
+        const parsed = JSON.parse(suggestion.newContent);
+        setStrategy(parsed);
+      } catch (e) {
+        // 忽略解析错误，因为已经在上面验证过了
+      }
+      
+      // 移除该建议
+      setPendingEdits(prev => prev.filter(edit => edit.id !== suggestion.id));
+    } catch (error: any) {
+      alert(`应用编辑建议失败: ${error.message}`);
+    }
+  };
+
+  // 拒绝编辑建议
+  const handleRejectEdit = (suggestion: FileEditSuggestion) => {
+    setPendingEdits(prev => prev.filter(edit => edit.id !== suggestion.id));
+  };
 
   async function loadStrategiesDir() {
     try {
@@ -221,7 +283,22 @@ export default function StrategyEditor({ strategyId, onBack, generatedStrategyDa
             )}
           </div>
         </div>
+
+        {/* 编辑建议侧边栏 */}
+        {pendingEdits.length > 0 && (
+          <div className="w-96 flex flex-col bg-card-bg rounded-lg border border-border-default overflow-hidden">
+            <EditSuggestionsPanel
+              suggestions={pendingEdits}
+              onAccept={handleAcceptEdit}
+              onReject={handleRejectEdit}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
-}
+});
+
+StrategyEditor.displayName = 'StrategyEditor';
+
+export default StrategyEditor;

@@ -20,8 +20,56 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 策略相关
   strategy: {
-    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) =>
-      ipcRenderer.invoke('strategy:generate', message, conversationHistory),
+    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) =>
+      ipcRenderer.invoke('strategy:generate', message, conversationHistory, currentFileContent),
+    generateStream: async function* (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) {
+      const result = await ipcRenderer.invoke('strategy:generateStream', message, conversationHistory, currentFileContent);
+      const channel = result.channel;
+      
+      // 使用 Promise 和事件监听器实现异步生成器
+      let resolveNext: ((value: { value: any; done: boolean }) => void) | null = null;
+      let queue: any[] = [];
+      let done = false;
+      
+      const handler = (_: any, event: any) => {
+        if (event.type === '__end__') {
+          done = true;
+          ipcRenderer.removeAllListeners(channel);
+          if (resolveNext) {
+            resolveNext({ value: undefined, done: true });
+            resolveNext = null;
+          }
+        } else {
+          queue.push(event);
+          if (resolveNext) {
+            resolveNext({ value: queue.shift(), done: false });
+            resolveNext = null;
+          }
+        }
+      };
+      
+      ipcRenderer.on(channel, handler);
+      
+      try {
+        while (!done) {
+          if (queue.length > 0) {
+            yield queue.shift();
+          } else {
+            yield await new Promise<{ type: string; data: any }>((resolve) => {
+              resolveNext = (value) => {
+                if (value.done) {
+                  resolve({ type: '__end__', data: {} });
+                } else {
+                  resolve(value.value);
+                }
+              };
+            });
+          }
+        }
+      } finally {
+        ipcRenderer.removeAllListeners(channel);
+      }
+    },
     save: (strategy: any) =>
       ipcRenderer.invoke('strategy:save', strategy),
     list: () => ipcRenderer.invoke('strategy:list'),
@@ -68,7 +116,8 @@ export type ElectronAPI = {
     getCurrentUser: (token?: string) => Promise<any>;
   };
   strategy: {
-    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) => Promise<any>;
+    generate: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) => Promise<any>;
+    generateStream: (message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) => AsyncGenerator<{ type: string; data: any }, void, unknown>;
     save: (strategy: any) => Promise<any>;
     list: () => Promise<any[]>;
     get: (id: string) => Promise<any>;

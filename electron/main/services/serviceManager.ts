@@ -77,10 +77,31 @@ function registerIPCHandlers() {
   console.log('[ServiceManager] 已注册: auth:getCurrentUser');
 
   // 策略相关
-  ipcMain.handle('strategy:generate', async (event, message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>) => {
-    return await services!.strategy.generate(message, conversationHistory || []);
+  ipcMain.handle('strategy:generate', async (event, message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) => {
+    return await services!.strategy.generate(message, conversationHistory || [], currentFileContent);
   });
   console.log('[ServiceManager] 已注册: strategy:generate');
+
+  // 流式生成策略（使用事件通道）
+  ipcMain.handle('strategy:generateStream', async (event, message: string, conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>, currentFileContent?: string) => {
+    const channel = `strategy:stream:${Date.now()}`;
+    
+    // 异步启动流式生成
+    (async () => {
+      try {
+        for await (const streamEvent of services!.strategy.generateStream(message, conversationHistory || [], currentFileContent)) {
+          event.sender.send(channel, streamEvent);
+        }
+        // 发送结束信号
+        event.sender.send(channel, { type: '__end__' });
+      } catch (error: any) {
+        event.sender.send(channel, { type: 'error', data: { message: error.message || '生成失败' } });
+      }
+    })();
+    
+    return { channel };
+  });
+  console.log('[ServiceManager] 已注册: strategy:generateStream');
 
   ipcMain.handle('strategy:save', async (event, strategy: any) => {
     console.log('[ServiceManager] 收到 strategy:save 请求');

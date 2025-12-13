@@ -3,6 +3,7 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { HumanMessage, SystemMessage, AIMessage, BaseMessage } from '@langchain/core/messages';
 import { Strategy, StrategyGenerationResult } from '../types/strategy';
 import { validateStrategyCode } from './codeValidator';
+import { EditFileTool, ReadFileTool, ValidateJsonTool } from '../tools';
 
 const StrategyStateAnnotation = Annotation.Root({
   userMessage: Annotation<string>(),
@@ -26,10 +27,20 @@ type StrategyState = typeof StrategyStateAnnotation.State;
 export class StrategyGenerator {
   private llm: BaseChatModel;
   private graph: ReturnType<typeof this.buildGraph>;
+  private tools: Array<EditFileTool | ReadFileTool | ValidateJsonTool>;
 
   constructor(llm: BaseChatModel) {
     this.llm = llm;
+    this.tools = [
+      new EditFileTool(),
+      new ReadFileTool(),
+      new ValidateJsonTool(),
+    ];
     this.graph = this.buildGraph();
+  }
+
+  getTools() {
+    return this.tools;
   }
 
   private buildGraph() {
@@ -213,7 +224,113 @@ ${JSON.stringify(state.strategy, null, 2)}
     return { explanation: response.content.toString().trim() };
   }
 
-  async generate(userMessage: string, conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []): Promise<StrategyGenerationResult> {
+  async *generateStream(
+    userMessage: string, 
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    currentFileContent?: string
+  ): AsyncIterableIterator<{ type: string; data: any }> {
+    // 检查是否是编辑现有文件的请求
+    if (currentFileContent) {
+      const isEditRequest = await this.detectEditIntent(userMessage, conversationHistory);
+      
+      if (isEditRequest) {
+        yield { type: 'thinking', data: { step: '检测到文件编辑请求', status: 'processing' } };
+        const result = await this.generateEditSuggestion(userMessage, conversationHistory, currentFileContent);
+        yield { type: 'final_result', data: result };
+        return;
+      }
+    }
+
+    // 将对话历史转换为 LangChain 消息格式
+    const historyMessages: BaseMessage[] = conversationHistory.map((msg) => {
+      if (msg.role === 'user') {
+        return new HumanMessage(msg.content);
+      } else {
+        return new AIMessage(msg.content);
+      }
+    });
+
+    const initialState = {
+      userMessage,
+      conversationHistory: historyMessages,
+      errors: [],
+    };
+
+    // 使用流式输出
+    try {
+      // LangGraph的stream方法返回一个异步迭代器
+      // 使用类型断言避免类型检查问题
+      const stream = this.graph.stream(initialState) as any;
+      
+      for await (const event of stream) {
+        // 处理每个节点的事件
+        for (const [nodeName, nodeState] of Object.entries(event)) {
+          if (nodeName === '__end__') {
+            // 最终结果
+            const result = nodeState as StrategyState;
+            if (!result.strategy || !result.code) {
+              yield { 
+                type: 'error', 
+                data: { message: '策略生成失败: ' + (result.errors?.join(', ') || '未知错误') } 
+              };
+              return;
+            }
+
+            yield {
+              type: 'final_result',
+              data: {
+                strategy: result.strategy,
+                code: result.code,
+                explanation: result.explanation || '',
+                validation: {
+                  isValid: !result.errors || result.errors.length === 0,
+                  errors: result.errors || [],
+                },
+              },
+            };
+          } else {
+            // 节点开始执行
+            yield {
+              type: 'node_start',
+              data: {
+                node: nodeName,
+                message: `开始执行: ${nodeName}`,
+              },
+            };
+            
+            // 节点执行完成
+            yield {
+              type: 'node_end',
+              data: {
+                node: nodeName,
+                state: nodeState,
+              },
+            };
+          }
+        }
+      }
+    } catch (error: any) {
+      yield {
+        type: 'error',
+        data: { message: error.message || '流式生成失败' },
+      };
+    }
+  }
+
+  async generate(
+    userMessage: string, 
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    currentFileContent?: string
+  ): Promise<StrategyGenerationResult> {
+    // 检查是否是编辑现有文件的请求
+    if (currentFileContent) {
+      const isEditRequest = await this.detectEditIntent(userMessage, conversationHistory);
+      
+      if (isEditRequest) {
+        return await this.generateEditSuggestion(userMessage, conversationHistory, currentFileContent);
+      }
+    }
+
     // 将对话历史转换为 LangChain 消息格式
     const historyMessages: BaseMessage[] = conversationHistory.map((msg) => {
       if (msg.role === 'user') {
@@ -244,5 +361,104 @@ ${JSON.stringify(state.strategy, null, 2)}
         errors: result.errors || [],
       },
     };
+  }
+
+  private async detectEditIntent(
+    userMessage: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<boolean> {
+    const editKeywords = ['修改', '更新', '改变', '调整', '编辑', '改', '改成', '改为', '改成', '替换', '修改为'];
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // 检查是否包含编辑关键词
+    const hasEditKeyword = editKeywords.some(keyword => lowerMessage.includes(keyword));
+    
+    // 也可以让 AI 判断
+    const conversationContext = conversationHistory.length > 0
+      ? `对话历史:\n${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}\n\n`
+      : '';
+
+    const prompt = `判断用户是否想要修改现有的策略文件内容。
+
+${conversationContext}当前用户消息: ${userMessage}
+
+请只返回 "yes" 或 "no"，不要其他内容。`;
+
+    try {
+      const response = await this.llm.invoke([
+        new SystemMessage('你是一个专业的意图识别助手。'),
+        new HumanMessage(prompt),
+      ]);
+
+      const answer = response.content.toString().trim().toLowerCase();
+      return answer.includes('yes') || hasEditKeyword;
+    } catch (error) {
+      // 如果 AI 判断失败，使用关键词判断
+      return hasEditKeyword;
+    }
+  }
+
+  private async generateEditSuggestion(
+    userMessage: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+    currentFileContent: string
+  ): Promise<StrategyGenerationResult> {
+    const conversationContext = conversationHistory.length > 0
+      ? `对话历史:\n${conversationHistory.map(msg => `${msg.role}: ${msg.content}`).join('\n')}\n\n`
+      : '';
+
+    const prompt = `用户想要修改现有的策略 JSON 文件。请根据用户的要求，生成修改后的完整 JSON 内容。
+
+${conversationContext}当前用户消息: ${userMessage}
+
+当前文件内容:
+\`\`\`json
+${currentFileContent}
+\`\`\`
+
+要求：
+1. 根据用户的要求修改 JSON 内容
+2. 保持 JSON 格式正确
+3. 返回完整的修改后的 JSON 内容
+4. 如果用户要求不明确，保持原有内容不变
+
+请只返回修改后的 JSON 内容，不要其他说明。`;
+
+    try {
+      const response = await this.llm.invoke([
+        new SystemMessage('你是一个专业的代码编辑器，擅长根据用户要求修改 JSON 文件内容。'),
+        new HumanMessage(prompt),
+      ]);
+
+      let newContent = response.content.toString().trim();
+      
+      // 尝试提取 JSON 内容
+      const jsonMatch = newContent.match(/```(?:json)?\n([\s\S]*?)\n```/) || newContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        newContent = jsonMatch[1] || jsonMatch[0];
+      }
+
+      // 验证 JSON 格式
+      try {
+        JSON.parse(newContent);
+      } catch (error) {
+        throw new Error('生成的 JSON 格式无效');
+      }
+
+      const editSuggestion = {
+        id: `edit_${Date.now()}`,
+        originalContent: currentFileContent,
+        newContent: newContent,
+        description: `根据用户要求修改: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`,
+        timestamp: Date.now(),
+      };
+
+      return {
+        explanation: '已生成编辑建议，请在右侧面板查看并选择接受或拒绝。',
+        fileEditSuggestion: editSuggestion,
+      };
+    } catch (error) {
+      throw new Error(`生成编辑建议失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

@@ -335,29 +335,27 @@ export function query(sql: string, params?: any[]): Promise<any[]> {
 export function run(sql: string, params?: any[]): Promise<{ lastInsertRowid: number; changes: number }> {
   return new Promise((resolve, reject) => {
     const conn = getDatabase();
-    // 如果没有提供参数，直接执行 SQL，不传递空数组
+    const callback = function(this: any, err: Error | null) {
+      if (err) {
+        reject(err);
+      } else {
+        resolve({
+          lastInsertRowid: this?.lastID || 0,
+          changes: this?.changes || 0,
+        });
+      }
+    };
+
+    // DuckDB 的 run 方法不支持参数数组，需要展开传入
     if (!params || params.length === 0) {
-      conn.run(sql, function(err: Error | null) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            lastInsertRowid: this.lastID || 0,
-            changes: this.changes || 0,
-          });
-        }
-      });
+      conn.run(sql, callback);
+      return;
+    }
+
+    if (Array.isArray(params)) {
+      conn.run(sql, ...params, callback);
     } else {
-      conn.run(sql, params, function(err: Error | null) {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({
-            lastInsertRowid: this.lastID || 0,
-            changes: this.changes || 0,
-          });
-        }
-      });
+      conn.run(sql, params, callback);
     }
   });
 }

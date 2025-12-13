@@ -22,13 +22,22 @@ export interface Strategy {
   positionSize?: number;
 }
 
+export interface FileEditSuggestion {
+  id: string;
+  originalContent: string;
+  newContent: string;
+  description?: string;
+  timestamp: number;
+}
+
 export interface StrategyGenerationResult {
-  strategy: Strategy;
-  code: string;
+  strategy?: Strategy;
+  code?: string;
   explanation: string;
-  validation: {
+  validation?: {
     isValid: boolean;
     errors?: string[];
     warnings?: string[];
   };
+  fileEditSuggestion?: FileEditSuggestion; // 文件编辑建议（如果存在，则优先使用）
 }

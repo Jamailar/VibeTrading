@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Sidebar from './Sidebar';
 import ChatInterface from './ChatInterface';
 import Settings from './Settings';
 import StrategyList from './StrategyList';
-import StrategyEditor from './StrategyEditor';
+import StrategyEditor, { StrategyEditorRef } from './StrategyEditor';
 import BacktestPage from './BacktestPage';
+import { FileEditSuggestion } from '../types/fileEdit';
 
 interface MainLayoutProps {
   onLogout?: () => void;
@@ -17,6 +18,8 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
   const [strategyView, setStrategyView] = useState<StrategyView>('list');
   const [editingStrategyId, setEditingStrategyId] = useState<string | null>(null);
   const [generatedStrategyData, setGeneratedStrategyData] = useState<any>(null);
+  const [editSuggestion, setEditSuggestion] = useState<FileEditSuggestion | null>(null);
+  const editorRef = useRef<StrategyEditorRef>(null);
 
   const handleNewStrategy = () => {
     setStrategyView('new');
@@ -46,10 +49,12 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
         } else {
           return (
             <StrategyEditor
+              ref={editorRef}
               strategyId={editingStrategyId || undefined}
               onBack={handleBackToList}
               generatedStrategyData={generatedStrategyData}
               onStrategyDataConsumed={() => setGeneratedStrategyData(null)}
+              editSuggestion={editSuggestion}
             />
           );
         }
@@ -151,6 +156,12 @@ export default function MainLayout({ onLogout }: MainLayoutProps = {}) {
             <ChatInterface 
               onStrategyGenerated={(strategyData) => {
                 setGeneratedStrategyData(strategyData);
+              }}
+              onEditSuggestion={(suggestion) => {
+                setEditSuggestion(suggestion);
+              }}
+              getCurrentFileContent={() => {
+                return editorRef.current?.getCurrentContent() || null;
               }}
             />
           </div>

@@ -20,7 +20,7 @@ export class AuthService {
         // 生成新的 secret
         this.jwtSecret = crypto.randomBytes(32).toString('hex');
         await run(`INSERT INTO settings (key, value) VALUES (?, ?)
-                   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`, ['jwt_secret', this.jwtSecret]);
+                   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`, ['jwt_secret', this.jwtSecret]);
       }
     } catch (error) {
       // 如果表不存在或查询失败，使用默认值

@@ -68,7 +68,7 @@ export async function initializeSettingsService() {
       try {
         await run(
           `INSERT INTO settings (key, value) VALUES (?, ?)
-           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
           ['strategies_dir', currentStrategiesDir]
         );
         console.log('[Settings] 默认策略文件夹路径已保存到数据库');
@@ -137,7 +137,7 @@ export function registerSettingsHandlers() {
       // 保存到数据库
       await run(
         `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
         ['strategies_dir', dirPath]
       );
       
@@ -173,7 +173,7 @@ export function registerSettingsHandlers() {
         // 自动保存选中的路径
         await run(
           `INSERT INTO settings (key, value) VALUES (?, ?)
-           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
           ['strategies_dir', selectedPath]
         );
         currentStrategiesDir = selectedPath;
@@ -224,7 +224,7 @@ export function registerSettingsHandlers() {
       const configJson = JSON.stringify(config);
       await run(
         `INSERT INTO settings (key, value) VALUES (?, ?)
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP`,
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
         ['ai_config', configJson]
       );
       

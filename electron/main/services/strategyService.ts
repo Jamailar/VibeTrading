@@ -55,7 +55,11 @@ export class StrategyService {
     }
   }
 
-  async generate(message: string, conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = []) {
+  async generate(
+    message: string, 
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    currentFileContent?: string
+  ) {
     try {
       // 如果 AI Worker 未初始化，尝试重新初始化
       if (!this.strategyGenerator) {
@@ -68,8 +72,8 @@ export class StrategyService {
         }
       }
       
-      console.log('[StrategyService] 生成策略:', message, conversationHistory.length > 0 ? `(有 ${conversationHistory.length} 条对话历史)` : '');
-      const result = await this.strategyGenerator.generate(message, conversationHistory);
+      console.log('[StrategyService] 生成策略:', message, conversationHistory.length > 0 ? `(有 ${conversationHistory.length} 条对话历史)` : '', currentFileContent ? '(有当前文件内容)' : '');
+      const result = await this.strategyGenerator.generate(message, conversationHistory, currentFileContent);
       return {
         success: true,
         data: result,
@@ -77,6 +81,47 @@ export class StrategyService {
     } catch (error: any) {
       console.error('[StrategyService] 生成策略失败:', error);
       throw new Error(error.message || '策略生成失败');
+    }
+  }
+
+  async *generateStream(
+    message: string,
+    conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+    currentFileContent?: string
+  ): AsyncGenerator<{ type: string; data: any }, void, unknown> {
+    try {
+      // 如果 AI Worker 未初始化，尝试重新初始化
+      if (!this.strategyGenerator) {
+        console.log('[StrategyService] AI Worker 未初始化，尝试重新初始化...');
+        this.initializeAIWorker();
+        
+        // 如果仍然未初始化，返回错误
+        if (!this.strategyGenerator) {
+          throw new Error('AI Worker 未初始化。请先在设置页面配置 AI API Key 和模型。');
+        }
+      }
+      
+      console.log('[StrategyService] 流式生成策略:', message);
+      
+      // 检查是否是编辑请求
+      if (currentFileContent) {
+        const isEditRequest = await (this.strategyGenerator as any).detectEditIntent?.(message, conversationHistory);
+        
+        if (isEditRequest) {
+          yield { type: 'thinking', data: { step: '检测到文件编辑请求', status: 'processing' } };
+          const result = await (this.strategyGenerator as any).generateEditSuggestion?.(message, conversationHistory, currentFileContent);
+          yield { type: 'final_result', data: result };
+          return;
+        }
+      }
+
+      // 使用流式生成
+      for await (const event of (this.strategyGenerator as any).generateStream?.(message, conversationHistory, currentFileContent) || []) {
+        yield event;
+      }
+    } catch (error: any) {
+      console.error('[StrategyService] 流式生成失败:', error);
+      yield { type: 'error', data: { message: error.message || '策略生成失败' } };
     }
   }
 

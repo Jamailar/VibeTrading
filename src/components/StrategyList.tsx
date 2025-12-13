@@ -10,15 +10,15 @@ interface Strategy {
 
 interface StrategyListProps {
   onNewStrategy: () => void;
-  onEditStrategy: (id: number) => void;
+  onEditStrategy: (id: string) => void;
 }
 
 export default function StrategyList({ onNewStrategy, onEditStrategy }: StrategyListProps) {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadStrategies();
