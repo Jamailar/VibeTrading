@@ -4,17 +4,22 @@
 
 create your trading strategies just by chatting
 
+![VibeTrading Screenshot](images/image.png)
+
 VibeTrading 是一个基于 Electron 的开源桌面应用，让人们通过与 AI 聊天的方式创建量化交易策略、并立即完成回测，支持美股、港股与比特币等市场。它不是给专业量化团队的黑箱，而是面向好奇者、学习者与独立开发者的开放实验室。值得一提的是，该项目源于 Miyoo AI Club 的一次活动，成员之间自发组织的一次开源实验，在"能不能把交易策略做成对话式体验"的讨论中自然诞生，并持续由社区共同完善。
 
 VibeTrading is an open-source Electron desktop application that lets you build quantitative trading strategies simply by chatting with AI—then instantly backtest them across U.S. stocks, Hong Kong equities, and Bitcoin. It's not a closed, institutional quant system, but a playground for curious builders, traders, and learners. The project originated from an activity inside the Miyoo AI Club, where members spontaneously launched a collaborative open-source experiment to explore whether trading strategy creation could become conversational—and it has grown with the community ever since.
 
 ## 特性
 
-- 🤖 **AI 策略生成** - 使用 LangChain + LangGraph 通过对话生成交易策略
+- 🤖 **AI 策略生成** - 使用 LangChain + LangGraph 通过对话生成交易策略，支持流式输出
+- 💬 **智能文件编辑** - AI 可以主动编辑策略文件，支持 diff 预览和 Accept/Reject 确认（类似 Cursor）
+- 🧠 **思考过程可视化** - 实时显示 AI 的推理步骤和 LangGraph 节点执行状态
+- 🛠️ **LangChain Tools 集成** - AI 可以调用工具（编辑文件、读取文件、验证 JSON）完成复杂任务
 - 📊 **回测引擎** - 完整的回测系统，支持多种性能指标
 - 📈 **市场数据** - 支持股票和加密货币数据获取
 - 💾 **本地存储** - 使用 DuckDB 本地数据库，数据完全在本地
-- 🖥️ **桌面应用** - 基于 Electron，支持 macOS、Windows、Linux
+- 🖥️ **桌面应用** - 基于 Electron，支持 macOS、Windows、Linux，无需服务器部署
 - 🔒 **安全执行** - 策略代码在沙箱中安全执行
 
 ## 快速开始
@@ -55,15 +60,20 @@ POLYGON_API_KEY=your-polygon-api-key  # 用于股票数据
 ### 运行
 
 ```bash
-# 开发模式
+# 开发模式（同时启动 Vite 开发服务器和 Electron）
 npm run dev
 
-# 构建应用
+# 仅构建前端和主进程代码（不启动应用）
 npm run build
 
-# 打包应用
-npm run dist
+# 打包为可分发应用
+npm run dist          # 所有平台
+npm run dist:mac      # macOS (.dmg)
+npm run dist:win      # Windows (.exe)
+npm run dist:linux    # Linux (AppImage)
 ```
+
+打包后的应用文件位于 `release/` 目录中。
 
 ## 项目结构
 
@@ -90,24 +100,37 @@ VibeTrading/
 ### 1. AI 策略生成
 - 通过自然语言对话描述策略想法
 - AI 使用 LangChain + LangGraph 生成策略代码
+- **流式输出**：实时显示 AI 生成的内容
+- **思考过程可视化**：查看 AI 的推理步骤和决策过程
 - 自动验证代码安全性
 
-### 2. 策略管理
+### 2. 智能文件编辑（类似 Cursor）
+- AI 可以主动编辑策略文件
+- **Diff 预览**：清晰显示代码变更
+- **Accept/Reject**：用户确认后才应用更改
+- **多种编辑模式**：
+  - `suggestion`：AI 生成建议，用户手动接受（默认）
+  - `direct`：AI 直接修改（需要用户授权）
+  - `auto`：AI 自动修改（高风险，仅限信任环境）
+- **LangChain Tools**：AI 可以调用工具完成文件操作
+
+### 3. 策略管理
 - 保存策略到本地数据库
 - 查看和管理策略列表
 - 编辑和删除策略
+- 策略文件 JSON 格式编辑
 
-### 3. 回测执行
+### 4. 回测执行
 - 执行策略回测
 - 计算性能指标（CAGR、Sharpe、最大回撤等）
 - 可视化回测结果
 
-### 4. 市场数据
+### 5. 市场数据
 - 获取股票数据（需要 Polygon API Key）
 - 获取加密货币数据（免费）
 - 支持多种时间框架
 
-### 5. 市场洞察
+### 6. 市场洞察
 - 市场情绪分析
 - 趋势识别
 - 策略推荐
@@ -147,7 +170,9 @@ VibeTrading/
 - [迁移文档](docs/MIGRATION.md) - 从 Docker 到 Electron 的迁移历史
 - [MVP 规划](docs/MVP_PLAN.md) - 功能规划文档
 
-## 开发
+## 部署
+
+VibeTrading 是一个**桌面应用**，所有功能都在本地运行，无需服务器部署。
 
 ### 开发模式
 
@@ -159,18 +184,28 @@ npm run dev
 - Vite 开发服务器 (http://localhost:5173)
 - Electron 应用窗口
 
-### 构建
+### 构建和打包
 
 ```bash
-# 构建前端和主进程
+# 构建前端和主进程代码
 npm run build
 
-# 打包应用
+# 打包为可分发应用
 npm run dist          # 所有平台
-npm run dist:mac      # macOS
-npm run dist:win      # Windows
-npm run dist:linux    # Linux
+npm run dist:mac      # macOS (.dmg)
+npm run dist:win      # Windows (.exe)
+npm run dist:linux    # Linux (AppImage)
 ```
+
+打包后的应用文件位于 `release/` 目录中，可以直接分发给用户安装使用。
+
+### 分发方式
+
+- **macOS**: 生成 `.dmg` 文件，用户双击安装
+- **Windows**: 生成 `.exe` 安装程序，用户运行安装
+- **Linux**: 生成 `AppImage` 文件，用户直接运行
+
+**注意**：首次打包需要下载 Electron 二进制文件，可能需要一些时间。
 
 ## 常见问题
 
@@ -192,6 +227,21 @@ A:
 - 加密货币数据：免费，使用 CCXT 库
 - 股票数据：需要 Polygon.io API Key（可选）
 
+### Q: AI 文件编辑功能如何使用？
+
+A: 
+1. 在聊天界面中，AI 会自动检测是否需要编辑策略文件
+2. 编辑建议会显示在策略编辑器的侧边栏
+3. 点击 "Accept" 应用更改，或 "Reject" 拒绝
+4. 可以在聊天界面切换编辑模式（suggestion/direct/auto）
+
+### Q: 如何查看 AI 的思考过程？
+
+A: 在 AI 回复时，会自动显示思考过程面板，展示：
+- 当前执行的 LangGraph 节点
+- 节点执行状态（processing/completed/failed）
+- 详细的执行信息
+
 ## 贡献
 
 欢迎贡献！请查看 [CONTRIBUTING.md](CONTRIBUTING.md) 了解如何参与项目。
@@ -206,4 +256,4 @@ MIT License (Non-Commercial) - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
-**注意**: 本项目已从 Docker 微服务架构迁移到 Electron 桌面应用。所有功能都在本地运行，无需服务器部署。
+**注意**: 本项目已从 Docker 微服务架构迁移到 Electron 桌面应用。所有功能都在本地运行，无需服务器部署。数据完全存储在本地，保护用户隐私。
